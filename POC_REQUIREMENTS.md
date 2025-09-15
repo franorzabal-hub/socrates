@@ -87,3 +87,48 @@ socrates/
 
 ## Objetivo del PoC
 Validar la viabilidad técnica y la experiencia de usuario de un tutor AI personalizado, estableciendo una base sólida y escalable para futuras iteraciones del producto.
+
+## Estado de Implementación
+
+### ✅ Completado
+1. **Infraestructura Base**
+   - Monorepo con Turborepo configurado
+   - Estructura de packages (shared, database, ui)
+   - Git repository creado y vinculado a GitHub
+
+2. **Backend Setup**
+   - Next.js app configurado en `apps/backend`
+   - Desplegado en Vercel (auto-deploy desde GitHub)
+   - Variables de entorno configuradas en Vercel
+
+3. **Mobile App Setup**
+   - React Native + Expo configurado en `apps/mobile`
+   - Dependencias base instaladas
+   - Configuración de navegación y UI libraries
+
+4. **Base de Datos**
+   - Supabase proyecto creado y configurado
+   - Schema SQL ejecutado (tablas: users, conversations, messages)
+   - Row Level Security (RLS) policies implementadas
+   - Triggers para updated_at configurados
+
+5. **Configuración de Servicios**
+   - Credenciales de Gemini AI configuradas
+   - Credenciales de Zep AI configuradas
+   - Variables de entorno local y producción
+
+### 🚧 En Progreso
+- Implementación de autenticación (Google/Apple login)
+- Creación de chat UI estilo Claude
+- Integración con LangChain y Gemini
+
+### 📋 Pendiente
+- API endpoints para manejo de mensajes
+- Integración con Zep AI para memoria
+- Testing end-to-end del flujo completo
+
+## URLs y Recursos
+
+- **GitHub Repository**: https://github.com/franorzabal-hub/socrates
+- **Vercel Project**: Desplegado automáticamente desde GitHub
+- **Supabase Project**: mdbupwurfbqcxyuxcnum.supabase.co
