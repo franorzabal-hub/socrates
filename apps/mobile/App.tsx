@@ -12,17 +12,18 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false for dev mode
 
   useEffect(() => {
-    checkAuthStatus();
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      setIsAuthenticated(!!session);
-    });
+    // Skip auth check in development
+    // checkAuthStatus();
+    // const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    //   setIsAuthenticated(!!session);
+    // });
 
-    return () => {
-      authListener?.subscription.unsubscribe();
-    };
+    // return () => {
+    //   authListener?.subscription.unsubscribe();
+    // };
   }, []);
 
   const checkAuthStatus = async () => {

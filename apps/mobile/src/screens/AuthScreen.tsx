@@ -18,6 +18,31 @@ WebBrowser.maybeCompleteAuthSession();
 export default function AuthScreen({ onAuthSuccess }: { onAuthSuccess: () => void }) {
   const [loading, setLoading] = useState(false);
 
+  // DEVELOPMENT MODE - Bypass auth for testing
+  const devModeLogin = async () => {
+    try {
+      setLoading(true);
+
+      // Create a test user profile
+      const testUserId = 'test-user-' + Date.now();
+      await createUserProfile({
+        id: testUserId,
+        email: 'test@example.com',
+        user_metadata: { full_name: 'Usuario de Prueba' }
+      });
+
+      // Set a fake session in local storage or state
+      // This is just for testing UI flow
+      onAuthSuccess();
+
+    } catch (error) {
+      console.error('Dev mode login error:', error);
+      Alert.alert('Error', 'Error en modo desarrollo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signInWithGoogle = async () => {
     try {
       setLoading(true);
@@ -112,6 +137,16 @@ export default function AuthScreen({ onAuthSuccess }: { onAuthSuccess: () => voi
             Bienvenido! Inicia sesión para comenzar tu aventura de aprendizaje
           </Text>
 
+          {/* DEVELOPMENT MODE BUTTON */}
+          <TouchableOpacity
+            style={[styles.authButton, styles.devButton]}
+            onPress={devModeLogin}
+            disabled={loading}
+          >
+            <Ionicons name="bug" size={20} color="#FFF" />
+            <Text style={styles.authButtonText}>Modo Desarrollo (Sin Auth)</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.authButton, styles.googleButton]}
             onPress={signInWithGoogle}
@@ -194,6 +229,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     marginBottom: 16,
+  },
+  devButton: {
+    backgroundColor: '#FF6B6B',
   },
   googleButton: {
     backgroundColor: '#4285F4',
