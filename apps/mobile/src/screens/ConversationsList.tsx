@@ -107,7 +107,7 @@ export default function ConversationsList() {
 
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size={30} color="#007AFF" />
         </View>
       ) : (
         <FlatList

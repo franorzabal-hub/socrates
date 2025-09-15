@@ -167,7 +167,7 @@ export default function ChatScreen() {
         </View>
       </View>
       <View style={[styles.messageBubble, styles.aiMessage, styles.thinkingBubble]}>
-        <ActivityIndicator size="small" color="#666" />
+        <ActivityIndicator size={20} color="#666" />
       </View>
     </View>
   );
@@ -191,7 +191,7 @@ export default function ChatScreen() {
       >
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size={30} color="#007AFF" />
           </View>
         ) : (
           <FlatList
