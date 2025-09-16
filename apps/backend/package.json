@@ -10,7 +10,6 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@socrates/shared": "*",
     "@socrates/database": "*",
     "@supabase/supabase-js": "^2.46.0",
     "@langchain/community": "^0.3.0",

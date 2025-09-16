@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { createClient } from '@supabase/supabase-js';
+import { getOrCreateSession, addMemory, getMemory } from '@/lib/zep';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,6 +36,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Initialize Zep session for memory
+    let zepSession;
+    let zepMemory;
+    const sessionId = `user_${userId}`;
+
+    try {
+      zepSession = await getOrCreateSession(userId);
+      zepMemory = await getMemory(sessionId);
+      console.log('Zep session initialized:', sessionId);
+    } catch (zepError) {
+      console.error('Zep initialization error (continuing without memory):', zepError);
+    }
+
     // Save user message to database
     const { data: userMessage, error: userError } = await supabase
       .from('messages')
@@ -54,21 +68,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get conversation history
-    const { data: messages, error: historyError } = await supabase
+    // Add message to Zep memory
+    if (zepSession) {
+      try {
+        await addMemory(sessionId, 'user', message);
+        console.log('Added user message to Zep memory');
+      } catch (zepError) {
+        console.error('Error adding to Zep memory:', zepError);
+      }
+    }
+
+    // Get conversation history BEFORE saving new message
+    const { data: existingMessages, error: historyError } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .limit(1);
+
+    if (historyError) {
+      console.error('Error fetching history:', historyError);
+    }
+
+    // Check if this is the first message and update title
+    const isFirstMessage = !existingMessages || existingMessages.length === 0;
+    if (isFirstMessage) {
+      // Get current conversation to check title
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('title')
+        .eq('id', conversationId)
+        .single();
+
+      // If title is "Nueva conversación", update it based on first message
+      if (conversation?.title === 'Nueva conversación') {
+        const truncatedMessage = message.length > 50
+          ? message.substring(0, 50) + '...'
+          : message;
+
+        await supabase
+          .from('conversations')
+          .update({ title: truncatedMessage })
+          .eq('id', conversationId);
+      }
+    }
+
+    // Get full conversation history for context
+    const { data: messages } = await supabase
       .from('messages')
       .select('content, role')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
       .limit(10);
 
-    if (historyError) {
-      console.error('Error fetching history:', historyError);
+    // Build context from Zep memory if available
+    let memoryContext = '';
+    if (zepMemory && zepMemory.summary) {
+      memoryContext = `\n\nContexto del estudiante: ${zepMemory.summary}`;
+      console.log('Using Zep memory context');
     }
 
     // Prepare messages for LangChain
     const chatMessages = [
-      new SystemMessage(SYSTEM_PROMPT),
+      new SystemMessage(SYSTEM_PROMPT + memoryContext),
       ...(messages || []).slice(0, -1).map(msg =>
         msg.role === 'user'
           ? new HumanMessage(msg.content)
@@ -98,6 +159,16 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to save AI response' },
         { status: 500 }
       );
+    }
+
+    // Add AI response to Zep memory
+    if (zepSession) {
+      try {
+        await addMemory(sessionId, 'assistant', aiResponse);
+        console.log('Added AI response to Zep memory');
+      } catch (zepError) {
+        console.error('Error adding AI response to Zep memory:', zepError);
+      }
     }
 
     // Update conversation updated_at

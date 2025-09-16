@@ -3,220 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Socrates AI - QR Code para Expo Go</title>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <title>Sócrates AI - Expo QR Code</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            padding: 20px;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
         }
-
         .container {
             background: white;
             border-radius: 20px;
             padding: 40px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 500px;
-            width: 100%;
             text-align: center;
+            max-width: 500px;
+            margin: 20px;
         }
-
         h1 {
             color: #333;
             margin-bottom: 10px;
             font-size: 2.5em;
         }
-
         .subtitle {
             color: #666;
             margin-bottom: 30px;
             font-size: 1.1em;
         }
-
         #qrcode {
-            display: inline-block;
+            margin: 30px auto;
             padding: 20px;
             background: white;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            margin: 20px 0;
-        }
-
-        .instructions {
-            background: #f7f7f7;
             border-radius: 10px;
+            display: inline-block;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .url {
+            background: #f0f2f5;
+            padding: 15px;
+            border-radius: 10px;
+            color: #333;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            margin: 20px 0;
+            font-size: 0.9em;
+        }
+        .instructions {
+            color: #666;
+            margin-top: 30px;
             padding: 20px;
-            margin: 30px 0;
+            background: #f9f9f9;
+            border-radius: 10px;
             text-align: left;
         }
-
         .instructions h3 {
             color: #333;
             margin-bottom: 15px;
         }
-
         .instructions ol {
-            color: #666;
+            margin: 10px 0;
             padding-left: 20px;
         }
-
         .instructions li {
-            margin: 10px 0;
+            margin: 8px 0;
             line-height: 1.6;
         }
-
         .status {
-            margin-top: 30px;
-            padding: 15px;
-            border-radius: 10px;
-            font-weight: 600;
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-top: 20px;
         }
-
         .status.success {
             background: #d4edda;
             color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status.warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
-        }
-
-        .url-info {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            word-break: break-all;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            color: #495057;
-        }
-
-        .logo {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-
-        .servers {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 10px;
-        }
-
-        .server-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            margin: 5px 0;
-            background: white;
-            border-radius: 5px;
-        }
-
-        .server-status {
-            font-weight: bold;
-        }
-
-        .running {
-            color: #28a745;
-        }
-
-        .button {
-            background: #007AFF;
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 20px;
-        }
-
-        .button:hover {
-            background: #0051D5;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="logo">🎓</div>
-        <h1>Socrates AI</h1>
-        <p class="subtitle">Tu tutor personal de aprendizaje</p>
+        <h1>🎓 Sócrates AI</h1>
+        <p class="subtitle">Escanea el código QR con Expo Go</p>
 
         <div id="qrcode"></div>
 
-        <div class="url-info">
+        <div class="url">
             exp://192.168.0.29:8082
         </div>
 
+        <div class="status success">
+            ✅ Servidor Expo activo en puerto 8082
+        </div>
+
         <div class="instructions">
-            <h3>📱 Cómo usar:</h3>
+            <h3>📱 Instrucciones:</h3>
             <ol>
-                <li>Descarga <strong>Expo Go</strong> en tu teléfono (App Store o Google Play)</li>
-                <li>Abre Expo Go</li>
-                <li>Escanea este código QR con la cámara de Expo Go</li>
+                <li>Asegúrate de que tu teléfono esté en la misma red WiFi</li>
+                <li>Abre la app <strong>Expo Go</strong> en tu dispositivo</li>
+                <li>Escanea este código QR con la cámara</li>
                 <li>La app se cargará automáticamente</li>
-                <li>Toca el botón rojo <strong>"Modo Desarrollo"</strong> para entrar sin autenticación</li>
             </ol>
         </div>
-
-        <div class="servers">
-            <h3>🖥️ Estado de los servidores:</h3>
-            <div class="server-item">
-                <span>Backend (Next.js)</span>
-                <span class="server-status running">✅ Puerto 3003</span>
-            </div>
-            <div class="server-item">
-                <span>Mobile (Expo)</span>
-                <span class="server-status running">✅ Puerto 8082</span>
-            </div>
-            <div class="server-item">
-                <span>Base de datos (Supabase)</span>
-                <span class="server-status running">✅ Cloud</span>
-            </div>
-        </div>
-
-        <div class="status success">
-            ✅ Todos los servicios están funcionando correctamente
-        </div>
-
-        <div class="status warning">
-            ⚠️ Asegúrate de que tu teléfono esté en la misma red WiFi (192.168.0.x)
-        </div>
-
-        <button onclick="location.reload()">Regenerar QR</button>
     </div>
 
     <script>
         // Generar el código QR
-        const qrcode = new QRCode(document.getElementById("qrcode"), {
-            text: "exp://192.168.0.29:8082",
-            width: 256,
-            height: 256,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
-        });
+        var qr = qrcode(0, 'M');
+        qr.addData('exp://192.168.0.29:8082');
+        qr.make();
 
-        // Auto-refresh cada 30 segundos para mantener la conexión activa
-        setTimeout(() => {
-            location.reload();
-        }, 30000);
+        // Crear el elemento img con el QR
+        var imgTag = qr.createImgTag(8, 16);
+        document.getElementById('qrcode').innerHTML = imgTag;
+
+        // Auto-refresh cada 5 segundos para mantener actualizado
+        setTimeout(() => location.reload(), 5000);
     </script>
 </body>
 </html>

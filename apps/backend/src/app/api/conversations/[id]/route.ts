@@ -9,10 +9,10 @@ const supabase = createClient(
 // GET - Get conversation with messages
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const conversationId = params.id;
+    const { id: conversationId } = await params;
     const userId = request.headers.get('x-user-id');
 
     if (!userId) {
@@ -66,13 +66,64 @@ export async function GET(
   }
 }
 
+// PATCH - Update conversation (rename)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: conversationId } = await params;
+    const userId = request.headers.get('x-user-id');
+    const { title } = await request.json();
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID required' },
+        { status: 400 }
+      );
+    }
+
+    if (!title || !title.trim()) {
+      return NextResponse.json(
+        { error: 'Title required' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from('conversations')
+      .update({ title: title.trim() })
+      .eq('id', conversationId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error('Error updating conversation:', error);
+      return NextResponse.json(
+        { error: 'Failed to update conversation' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ conversation: data });
+
+  } catch (error) {
+    console.error('Update conversation error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE - Delete conversation
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const conversationId = params.id;
+    const { id: conversationId } = await params;
     const userId = request.headers.get('x-user-id');
 
     if (!userId) {

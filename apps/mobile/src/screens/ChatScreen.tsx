@@ -8,11 +8,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Crypto from 'expo-crypto';
 
 interface Message {
   id: string;
@@ -32,6 +33,15 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState(conversationId);
+  const testUserId = 'df5cf0d5-c064-482c-87df-6100a8475a60'; // Fixed test user ID
+
+  useEffect(() => {
+    // Si recibimos un nuevo conversationId por params, lo usamos
+    if (conversationId && conversationId !== currentConversationId) {
+      setCurrentConversationId(conversationId);
+      setMessages([]);
+    }
+  }, [conversationId]);
 
   useEffect(() => {
     if (currentConversationId) {
@@ -43,18 +53,45 @@ export default function ChatScreen() {
 
   const createNewConversation = async () => {
     try {
+      // First, ensure user exists
+      const authResponse = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/auth`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: testUserId,
+          email: 'test@example.com',
+          name: 'Usuario de Prueba',
+        }),
+      });
+
+      if (!authResponse.ok) {
+        console.error('Failed to create user');
+        return;
+      }
+
+      // Then create conversation
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/conversations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: 'test-user-id', // TODO: Replace with actual user ID
+          userId: testUserId,
           title: 'Nueva conversación',
         }),
       });
+
+      if (!response.ok) {
+        console.error('Failed to create conversation');
+        return;
+      }
+
       const data = await response.json();
-      setCurrentConversationId(data.conversation.id);
+      if (data.conversation && data.conversation.id) {
+        setCurrentConversationId(data.conversation.id);
+      }
     } catch (error) {
       console.error('Error creating conversation:', error);
     }
@@ -69,7 +106,7 @@ export default function ChatScreen() {
         `${process.env.EXPO_PUBLIC_API_URL}/api/conversations/${currentConversationId}`,
         {
           headers: {
-            'x-user-id': 'test-user-id', // TODO: Replace with actual user ID
+            'x-user-id': testUserId, // TODO: Replace with actual user ID from auth
           },
         }
       );
@@ -105,7 +142,7 @@ export default function ChatScreen() {
         body: JSON.stringify({
           message: userMessage.content,
           conversationId: currentConversationId,
-          userId: 'test-user-id', // TODO: Replace with actual user ID
+          userId: testUserId, // TODO: Replace with actual user ID from auth
         }),
       });
 
@@ -172,15 +209,33 @@ export default function ChatScreen() {
     </View>
   );
 
+  const EmptyChat = () => (
+    <View style={styles.emptyChat}>
+      <Ionicons name="sparkles" size={48} color="#FF5733" style={styles.logoIcon} />
+      <Text style={styles.welcomeTitle}>¿Cómo puedo ayudarte hoy?</Text>
+      <Text style={styles.welcomeSubtitle}>Pregúntame sobre cualquier tema escolar</Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+        <TouchableOpacity
+          onPress={() => navigation.openDrawer()}
+          style={styles.menuButton}
+        >
+          <Ionicons name="menu" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tutor AI</Text>
-        <TouchableOpacity style={styles.menuButton}>
-          <Ionicons name="ellipsis-vertical" size={24} color="#333" />
+        <Text style={styles.headerTitle}>Socrates AI</Text>
+        <TouchableOpacity
+          style={styles.newChatButton}
+          onPress={() => {
+            setCurrentConversationId(null);
+            setMessages([]);
+            createNewConversation();
+          }}
+        >
+          <Ionicons name="add" size={28} color="#007AFF" />
         </TouchableOpacity>
       </View>
 
@@ -199,8 +254,12 @@ export default function ChatScreen() {
             data={messages}
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesList}
+            contentContainerStyle={[
+              styles.messagesList,
+              messages.length === 0 && styles.emptyMessagesList,
+            ]}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+            ListEmptyComponent={<EmptyChat />}
             ListFooterComponent={thinking ? <ThinkingIndicator /> : null}
           />
         )}
@@ -248,7 +307,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
   },
-  backButton: {
+  menuButton: {
     padding: 4,
   },
   headerTitle: {
@@ -256,7 +315,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  menuButton: {
+  newChatButton: {
     padding: 4,
   },
   chatContainer: {
@@ -351,5 +410,30 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  emptyChat: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyMessagesList: {
+    flex: 1,
+  },
+  logoIcon: {
+    marginBottom: 24,
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  welcomeSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

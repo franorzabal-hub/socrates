@@ -7,9 +7,11 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Crypto from 'expo-crypto';
 
 interface Conversation {
   id: string;
@@ -22,7 +24,10 @@ interface Conversation {
 export default function ConversationsList() {
   const navigation = useNavigation();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [filteredConversations, setFilteredConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const testUserId = 'df5cf0d5-c064-482c-87df-6100a8475a60'; // Fixed test user ID
 
   useEffect(() => {
     fetchConversations();
@@ -33,15 +38,30 @@ export default function ConversationsList() {
       // TODO: Replace with actual user ID from auth
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/conversations`, {
         headers: {
-          'x-user-id': 'test-user-id',
+          'x-user-id': testUserId, // TODO: Replace with actual user ID from auth
         },
       });
       const data = await response.json();
-      setConversations(data.conversations || []);
+      const allConversations = data.conversations || [];
+      setConversations(allConversations);
+      setFilteredConversations(allConversations);
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setFilteredConversations(conversations);
+    } else {
+      const filtered = conversations.filter(conv =>
+        conv.title.toLowerCase().includes(query.toLowerCase()) ||
+        (conv.preview && conv.preview.toLowerCase().includes(query.toLowerCase()))
+      );
+      setFilteredConversations(filtered);
     }
   };
 
@@ -99,10 +119,35 @@ export default function ConversationsList() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Socrates AI</Text>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Ionicons name="settings-outline" size={24} color="#333" />
+        <TouchableOpacity
+          style={styles.menuButton}
+          onPress={() => navigation.openDrawer()}
+        >
+          <Ionicons name="menu" size={24} color="#333" />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Todas las Conversaciones</Text>
+        <TouchableOpacity
+          style={styles.newChatButton}
+          onPress={() => navigation.navigate('Chat' as never)}
+        >
+          <Ionicons name="add" size={28} color="#007AFF" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar conversaciones..."
+          placeholderTextColor="#999"
+          value={searchQuery}
+          onChangeText={handleSearch}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => handleSearch('')}>
+            <Ionicons name="close-circle" size={20} color="#999" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -111,10 +156,10 @@ export default function ConversationsList() {
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={filteredConversations}
           renderItem={renderConversation}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : undefined}
+          contentContainerStyle={filteredConversations.length === 0 ? styles.emptyContainer : undefined}
           ListEmptyComponent={<EmptyState />}
         />
       )}
@@ -145,12 +190,33 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E5E5',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '600',
     color: '#333',
   },
-  settingsButton: {
+  menuButton: {
     padding: 4,
+  },
+  newChatButton: {
+    padding: 4,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 8,
   },
   loadingContainer: {
     flex: 1,

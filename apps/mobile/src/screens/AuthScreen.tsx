@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '@socrates/database';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -23,8 +24,8 @@ export default function AuthScreen({ onAuthSuccess }: { onAuthSuccess: () => voi
     try {
       setLoading(true);
 
-      // Create a test user profile
-      const testUserId = 'test-user-' + Date.now();
+      // Use fixed test user UUID that exists in database
+      const testUserId = 'df5cf0d5-c064-482c-87df-6100a8475a60';
       await createUserProfile({
         id: testUserId,
         email: 'test@example.com',
