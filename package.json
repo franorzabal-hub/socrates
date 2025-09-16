@@ -7,6 +7,8 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "npm run build -w @socrates/backend",
+    "dev": "npm run dev -w @socrates/backend",
     "dev:backend": "npm run dev -w @socrates/backend",
     "dev:mobile": "npm run start -w @socrates/mobile",
     "install-all": "npm install --workspaces"
