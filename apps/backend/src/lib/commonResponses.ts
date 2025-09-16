@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 // Cache for common questions and responses
 interface CachedResponse {
   pattern: RegExp;

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface CachedTopic {
   keywords: string[];
@@ -83,13 +82,13 @@ const educationalTopics: CachedTopic[] = [
   }
 ];
 
-// Diccionario de sinónimos para mejorar matching
-const synonyms: Record<string, string[]> = {
-  'que': ['cual', 'cuales', 'qué', 'cuál'],
-  'es': ['son', 'significa', 'quiere decir'],
-  'explica': ['explicame', 'dime', 'habla', 'cuenta', 'enseña'],
-  'como': ['cómo', 'de que forma', 'de que manera']
-};
+// Diccionario de sinónimos para mejorar matching (reservado para uso futuro)
+// const synonyms: Record<string, string[]> = {
+//   'que': ['cual', 'cuales', 'qué', 'cuál'],
+//   'es': ['son', 'significa', 'quiere decir'],
+//   'explica': ['explicame', 'dime', 'habla', 'cuenta', 'enseña'],
+//   'como': ['cómo', 'de que forma', 'de que manera']
+// };
 
 // Función para calcular similitud entre strings
 function calculateSimilarity(str1: string, str2: string): number {
