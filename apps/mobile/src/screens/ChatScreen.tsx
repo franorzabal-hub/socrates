@@ -33,23 +33,32 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState(conversationId);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false); // Start as false
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [messageOffset, setMessageOffset] = useState(0);
+  const [isFirstMessage, setIsFirstMessage] = useState(true);
+  const [messageIds, setMessageIds] = useState<Set<string>>(new Set()); // Track unique messages
   const testUserId = 'df5cf0d5-c064-482c-87df-6100a8475a60'; // Fixed test user ID
+  const MESSAGE_LIMIT = 20; // Load 20 messages at a time
 
   useEffect(() => {
     // Si recibimos un nuevo conversationId por params, lo usamos
     if (conversationId && conversationId !== currentConversationId) {
       setCurrentConversationId(conversationId);
       setMessages([]);
+      fetchMessages(true, conversationId);
     }
   }, [conversationId]);
 
   useEffect(() => {
-    if (currentConversationId) {
-      fetchMessages();
-    } else {
+    // Solo crear nueva conversación al montar si no hay ID
+    if (!currentConversationId && !conversationId) {
       createNewConversation();
+    } else if (currentConversationId && !conversationId) {
+      // Solo fetch si tenemos ID y no viene de params
+      fetchMessages();
     }
-  }, [currentConversationId]);
+  }, []);
 
   const createNewConversation = async () => {
     try {
@@ -91,75 +100,193 @@ export default function ChatScreen() {
       const data = await response.json();
       if (data.conversation && data.conversation.id) {
         setCurrentConversationId(data.conversation.id);
+        // Don't fetch messages here - the empty state is already showing
       }
     } catch (error) {
       console.error('Error creating conversation:', error);
     }
   };
 
-  const fetchMessages = async () => {
-    if (!currentConversationId) return;
+  const fetchMessages = async (isInitial = true, specificConvId?: string) => {
+    const convId = specificConvId || currentConversationId;
+    if (!convId) return;
 
-    setLoading(true);
+    if (isInitial) {
+      setLoading(true);
+      setMessageOffset(0);
+      setHasMoreMessages(false); // Reset to false
+      setMessageIds(new Set()); // Clear message IDs
+    } else {
+      setLoadingMore(true);
+    }
+
     try {
+      const offset = isInitial ? 0 : messageOffset;
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/api/conversations/${currentConversationId}`,
+        `${process.env.EXPO_PUBLIC_API_URL}/api/conversations/${convId}?limit=${MESSAGE_LIMIT}&offset=${offset}`,
         {
           headers: {
-            'x-user-id': testUserId, // TODO: Replace with actual user ID from auth
+            'x-user-id': testUserId,
           },
         }
       );
       const data = await response.json();
-      setMessages(data.conversation?.messages || []);
+      const newMessages = data.conversation?.messages || [];
+
+      // Filter out duplicates using message IDs
+      const uniqueMessages = newMessages.filter(msg => {
+        if (messageIds.has(msg.id)) {
+          console.log('Duplicate message filtered:', msg.id);
+          return false;
+        }
+        return true;
+      });
+
+      // Update message IDs set
+      const newIds = new Set(messageIds);
+      uniqueMessages.forEach(msg => newIds.add(msg.id));
+      setMessageIds(newIds);
+
+      if (isInitial) {
+        setMessages(uniqueMessages);
+      } else {
+        // Prepend older messages to the beginning
+        setMessages(prev => [...uniqueMessages, ...prev]);
+      }
+
+      // Only show 'load more' if we got a full page of messages
+      if (newMessages.length >= MESSAGE_LIMIT) {
+        setHasMoreMessages(true);
+      } else {
+        setHasMoreMessages(false);
+      }
+
+      setMessageOffset(offset + newMessages.length);
+
+      // Check if this is a conversation with messages
+      if (newMessages.length > 0) {
+        setIsFirstMessage(false);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMoreMessages = () => {
+    if (!loadingMore && hasMoreMessages && currentConversationId) {
+      fetchMessages(false);
     }
   };
 
   const sendMessage = async () => {
     if (!inputText.trim() || !currentConversationId) return;
 
+    // Prevent double-submission
+    if (thinking) {
+      console.log('Already processing a message, ignoring');
+      return;
+    }
+
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}`,
       content: inputText.trim(),
       role: 'user',
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    console.log('Sending message:', userMessage.content);
+
+    // Check for duplicate submission
+    if (messageIds.has(userMessage.id)) {
+      console.log('Duplicate message prevented');
+      return;
+    }
+
+    // Optimistic update - show user message immediately
+    setMessages((prev) => {
+      // Check if message already exists
+      const exists = prev.some(msg => msg.id === userMessage.id);
+      if (exists) {
+        console.log('Message already exists, not adding');
+        return prev;
+      }
+      return [...prev, userMessage];
+    });
+
+    // Add to message IDs
+    setMessageIds(prev => new Set([...prev, userMessage.id]));
+
     setInputText('');
     setThinking(true);
 
+    // Track if this was the first message
+    const wasFirstMessage = isFirstMessage;
+    if (isFirstMessage) {
+      setIsFirstMessage(false);
+    }
+
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: userMessage.content,
-          conversationId: currentConversationId,
-          userId: testUserId, // TODO: Replace with actual user ID from auth
-        }),
-      });
+      // Disable streaming for now - it's causing issues in React Native
+      const useStreaming = false; // Disabled until we fix streaming support
 
-      const data = await response.json();
+      if (useStreaming) {
+        // Streaming is currently disabled
+      } else {
+        // Use regular endpoint
+        const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: userMessage.content,
+            conversationId: currentConversationId,
+            userId: testUserId,
+          }),
+        });
 
-      if (data.message) {
-        const aiMessage: Message = {
-          id: data.messageId || Date.now().toString(),
-          content: data.message,
-          role: 'assistant',
-          createdAt: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, aiMessage]);
+        const data = await response.json();
+
+        if (data.message) {
+          const aiMessage: Message = {
+            id: data.messageId || `ai-${Date.now()}`,
+            content: data.message,
+            role: 'assistant',
+            createdAt: new Date().toISOString(),
+          };
+          console.log('Received AI response:', aiMessage.content.substring(0, 50) + '...');
+          console.log('Response was cached:', data.cached || false);
+
+          // Check for duplicate before adding
+          setMessages((prev) => {
+            const exists = prev.some(msg => msg.id === aiMessage.id ||
+              (msg.content === aiMessage.content && msg.role === 'assistant' &&
+               Math.abs(new Date(msg.createdAt).getTime() - new Date(aiMessage.createdAt).getTime()) < 5000));
+            if (exists) {
+              console.log('AI message already exists or duplicate content, not adding');
+              return prev;
+            }
+            return [...prev, aiMessage];
+          });
+
+          // Add to message IDs
+          setMessageIds(prev => new Set([...prev, aiMessage.id]));
+        }
+      }
+
+      // If this was the first message, the title should have been updated
+      // Force a refresh of the drawer conversations on next open
+      if (wasFirstMessage) {
+        // This will be picked up by the drawer's listener
+        console.log('First message sent, title should be updated');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      // TODO: Show error message to user
+      // Don't show error message, just log it
+      console.error('Failed to send message, not adding error to UI');
     } finally {
       setThinking(false);
     }
@@ -230,8 +357,13 @@ export default function ChatScreen() {
         <TouchableOpacity
           style={styles.newChatButton}
           onPress={() => {
+            // Reset all state for new conversation
             setCurrentConversationId(null);
             setMessages([]);
+            setIsFirstMessage(true);
+            setMessageOffset(0);
+            setHasMoreMessages(false); // Start as false
+            setMessageIds(new Set()); // Clear message IDs
             createNewConversation();
           }}
         >
@@ -248,19 +380,47 @@ export default function ChatScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size={30} color="#007AFF" />
           </View>
+        ) : messages.length === 0 && !thinking ? (
+          // Show empty state when no messages
+          <View style={styles.emptyChatContainer}>
+            <EmptyChat />
+          </View>
         ) : (
           <FlatList
             ref={flatListRef}
             data={messages}
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={[
-              styles.messagesList,
-              messages.length === 0 && styles.emptyMessagesList,
-            ]}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-            ListEmptyComponent={<EmptyChat />}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => {
+              // Only auto-scroll to end for new messages, not when loading older ones
+              if (!loadingMore) {
+                flatListRef.current?.scrollToEnd();
+              }
+            }}
+            ListHeaderComponent={
+              loadingMore ? (
+                <View style={styles.loadingMoreContainer}>
+                  <ActivityIndicator size={20} color="#007AFF" />
+                </View>
+              ) : hasMoreMessages && messages.length > 0 ? (
+                <TouchableOpacity
+                  style={styles.loadMoreButton}
+                  onPress={loadMoreMessages}
+                >
+                  <Text style={styles.loadMoreText}>Cargar mensajes anteriores</Text>
+                </TouchableOpacity>
+              ) : null
+            }
             ListFooterComponent={thinking ? <ThinkingIndicator /> : null}
+            onScroll={({ nativeEvent }) => {
+              // Auto-load more when scrolled to top
+              if (nativeEvent.contentOffset.y <= 50 && hasMoreMessages && !loadingMore) {
+                loadMoreMessages();
+              }
+            }}
+            scrollEventThrottle={400}
+            inverted={false}
           />
         )}
 
@@ -277,7 +437,11 @@ export default function ChatScreen() {
           />
           <TouchableOpacity
             style={[styles.sendButton, (!inputText.trim() || thinking) && styles.sendButtonDisabled]}
-            onPress={sendMessage}
+            onPress={() => {
+              if (!thinking && inputText.trim()) {
+                sendMessage();
+              }
+            }}
             disabled={!inputText.trim() || thinking}
           >
             <Ionicons
@@ -411,14 +575,15 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.5,
   },
-  emptyChat: {
+  emptyChatContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
   },
-  emptyMessagesList: {
-    flex: 1,
+  emptyChat: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
   logoIcon: {
     marginBottom: 24,
@@ -435,5 +600,19 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  loadingMoreContainer: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    color: '#007AFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

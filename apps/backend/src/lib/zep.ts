@@ -6,6 +6,16 @@ const zepClient = new ZepClient({
   apiKey: process.env.ZEP_API_KEY!,
 });
 
+// Session cache with TTL
+interface CachedSession {
+  session: any;
+  timestamp: number;
+}
+
+const sessionCache = new Map<string, CachedSession>();
+const memoryCache = new Map<string, { memory: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export async function getOrCreateSession(
   conversationId: string,
   userId: string,
@@ -13,10 +23,24 @@ export async function getOrCreateSession(
 ): Promise<any> {
   // Use conversation ID as the primary session identifier
   const sessionId = `conversation_${conversationId}`;
+  const cacheKey = sessionId;
+
+  // Check cache first
+  const cached = sessionCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.session;
+  }
 
   try {
     // Try to get existing session
     const session = await zepClient.memory.getSession(sessionId);
+
+    // Cache the session
+    sessionCache.set(cacheKey, {
+      session,
+      timestamp: Date.now()
+    });
+
     return session;
   } catch (error) {
     // Create new session if it doesn't exist
@@ -34,6 +58,12 @@ export async function getOrCreateSession(
       sessionId,
       userId, // Keep user_id for user-level analytics
       metadata,
+    });
+
+    // Cache the new session
+    sessionCache.set(cacheKey, {
+      session,
+      timestamp: Date.now()
     });
 
     return session;
@@ -56,8 +86,21 @@ export async function addMemory(
 }
 
 export async function getMemory(sessionId: string): Promise<any | null> {
+  // Check cache first
+  const cached = memoryCache.get(sessionId);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.memory;
+  }
+
   try {
     const memory = await zepClient.memory.get(sessionId);
+
+    // Cache the memory
+    memoryCache.set(sessionId, {
+      memory,
+      timestamp: Date.now()
+    });
+
     return memory;
   } catch (error) {
     console.error('Error fetching memory:', error);

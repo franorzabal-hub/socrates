@@ -9,17 +9,20 @@ import {
   getMemory,
   getCrossConversationContext
 } from '@/lib/zep';
+import { checkCommonResponse, trackResponseTime } from '@/lib/commonResponses';
+import { trackAsync } from '@/lib/metrics';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Use faster model for better performance
 const model = new ChatGoogleGenerativeAI({
-  modelName: 'gemini-2.0-flash-exp',
+  modelName: 'gemini-1.5-flash', // Faster than 2.0-flash-exp
   apiKey: process.env.GOOGLE_AI_API_KEY!,
   temperature: 0.7,
-  maxOutputTokens: 1024,
+  maxOutputTokens: 512, // Reduced for faster responses
 });
 
 const SYSTEM_PROMPT = `Eres un tutor AI amigable y paciente para estudiantes de primaria en Latinoamérica.
@@ -32,8 +35,11 @@ Tu objetivo es ayudar a los estudiantes a aprender de forma divertida y comprens
 - Responde en español`;
 
 export async function POST(request: NextRequest) {
-  try {
-    const { message, conversationId, userId } = await request.json();
+  const startTime = Date.now();
+
+  return trackAsync('api.chat', async () => {
+    try {
+      const { message, conversationId, userId } = await request.json();
 
     if (!message || !conversationId || !userId) {
       return NextResponse.json(
@@ -42,98 +48,175 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Zep session for this specific conversation
-    let zepSession: any;
-    let zepMemory: any;
-    let crossConversationContext = '';
-    const sessionId = `conversation_${conversationId}`;
+    // Check for cached response first
+    const cachedResponse = await trackAsync('cache.check', async () =>
+      checkCommonResponse(message)
+    );
 
-    try {
-      // Create session for this conversation
-      zepSession = await getOrCreateSession(conversationId, userId);
+    if (cachedResponse) {
+      // Track cached response time
+      trackResponseTime(conversationId, startTime, true);
 
-      // Get memory for current conversation
-      zepMemory = await getMemory(sessionId);
+      // Update title if needed (even for cached responses)
+      try {
+        const { data: conversation } = await supabase
+          .from('conversations')
+          .select('title')
+          .eq('id', conversationId)
+          .single();
 
-      // Get cross-conversation context for better continuity
-      crossConversationContext = await getCrossConversationContext(userId, sessionId);
+        if (conversation?.title === 'Nueva conversación') {
+          const truncatedMessage = message.length > 50
+            ? message.substring(0, 50) + '...'
+            : message;
 
-      console.log('Zep session initialized:', sessionId);
-    } catch (zepError) {
-      console.error('Zep initialization error (continuing without memory):', zepError);
+          await supabase
+            .from('conversations')
+            .update({ title: truncatedMessage })
+            .eq('id', conversationId);
+
+          console.log(`Updated title (cached): ${truncatedMessage}`);
+        }
+      } catch (error) {
+        console.error('Error updating title for cached response:', error);
+      }
+
+      // Save both messages to database
+      await trackAsync('db.message.insert.batch', async () =>
+        Promise.all([
+          supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: message,
+              role: 'user',
+            }),
+          supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: cachedResponse,
+              role: 'assistant',
+            })
+        ])
+      );
+
+      return NextResponse.json({
+        message: cachedResponse,
+        cached: true,
+        responseTime: Date.now() - startTime
+      });
     }
 
-    // Save user message to database
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { data: userMessage, error: userError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        content: message,
-        role: 'user',
-      })
-      .select()
-      .single();
+    // Initialize variables
+    const sessionId = `conversation_${conversationId}`;
+    let zepMemory: any;
+    let crossConversationContext = '';
 
-    if (userError) {
-      console.error('Error saving user message:', userError);
+    // Check if we need cross-conversation context
+    const needsCrossContext = message.toLowerCase().includes('recuerdas') ||
+                            message.toLowerCase().includes('antes') ||
+                            message.toLowerCase().includes('hablamos');
+
+    // Parallel operations for better performance
+    const [zepSession, userMessageResult] = await trackAsync('parallel.init', async () =>
+      Promise.all([
+        // Initialize Zep session
+        trackAsync('zep.session.get', async () =>
+          getOrCreateSession(conversationId, userId).catch(error => {
+            console.error('Zep initialization error:', error);
+            return null;
+          })
+        ),
+        // Save user message to database
+        trackAsync('db.message.insert', async () =>
+          supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: message,
+              role: 'user',
+            })
+            .select()
+            .single()
+        )
+      ])
+    );
+
+    if (userMessageResult.error) {
+      console.error('Error saving user message:', userMessageResult.error);
       return NextResponse.json(
         { error: 'Failed to save message' },
         { status: 500 }
       );
     }
 
-    // Add message to Zep memory
+    // Parallel Zep operations if session exists
     if (zepSession) {
-      try {
-        await addMemory(sessionId, 'user', message);
-        console.log('Added user message to Zep memory');
-      } catch (zepError) {
-        console.error('Error adding to Zep memory:', zepError);
+      const zepPromises = [
+        getMemory(sessionId).catch(() => null),
+        addMemory(sessionId, 'user', message).catch(error => {
+          console.error('Error adding to Zep memory:', error);
+        })
+      ];
+
+      // Add cross-conversation context if needed
+      if (needsCrossContext) {
+        zepPromises.push(
+          getCrossConversationContext(userId, sessionId).catch(() => '')
+        );
+      }
+
+      const zepResults = await Promise.all(zepPromises);
+      zepMemory = zepResults[0];
+      if (needsCrossContext) {
+        crossConversationContext = zepResults[2] as string;
       }
     }
 
-    // Get conversation history BEFORE saving new message
-    const { data: existingMessages, error: historyError } = await supabase
-      .from('messages')
-      .select('id')
-      .eq('conversation_id', conversationId)
-      .limit(1);
-
-    if (historyError) {
-      console.error('Error fetching history:', historyError);
-    }
-
-    // Check if this is the first message and update title
-    const isFirstMessage = !existingMessages || existingMessages.length === 0;
-    if (isFirstMessage) {
-      // Get current conversation to check title
-      const { data: conversation } = await supabase
+    // Check and update title if needed (synchronously to ensure it happens)
+    try {
+      // Get conversation to check current title
+      const { data: conversation, error: fetchError } = await supabase
         .from('conversations')
         .select('title')
         .eq('id', conversationId)
         .single();
 
-      // If title is "Nueva conversación", update it based on first message
-      if (conversation?.title === 'Nueva conversación') {
+      if (fetchError) {
+        console.error('Error fetching conversation:', fetchError);
+      } else if (conversation?.title === 'Nueva conversación') {
+        // Only update if it's still the default title
         const truncatedMessage = message.length > 50
           ? message.substring(0, 50) + '...'
           : message;
 
-        await supabase
+        const { error: updateError } = await supabase
           .from('conversations')
           .update({ title: truncatedMessage })
           .eq('id', conversationId);
+
+        if (updateError) {
+          console.error('Error updating title:', updateError);
+        } else {
+          console.log(`Successfully updated conversation title to: ${truncatedMessage}`);
+        }
+      } else {
+        console.log('Title already set to:', conversation?.title);
       }
+    } catch (error) {
+      console.error('Error in title update process:', error);
     }
 
-    // Get full conversation history for context
-    const { data: messages } = await supabase
-      .from('messages')
-      .select('content, role')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(10);
+    // Get only recent messages for context (5 instead of 10)
+    const { data: messages } = await trackAsync('db.messages.fetch', async () =>
+      supabase
+        .from('messages')
+        .select('content, role')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(5)
+    );
 
     // Build context from Zep memory and cross-conversation history
     let memoryContext = '';
@@ -150,10 +233,11 @@ export async function POST(request: NextRequest) {
       console.log('Using cross-conversation context');
     }
 
-    // Prepare messages for LangChain
+    // Prepare messages for LangChain (reverse messages back to chronological)
+    const recentMessages = messages ? messages.reverse() : [];
     const chatMessages = [
       new SystemMessage(SYSTEM_PROMPT + memoryContext),
-      ...(messages || []).slice(0, -1).map(msg =>
+      ...recentMessages.slice(0, -1).map(msg =>
         msg.role === 'user'
           ? new HumanMessage(msg.content)
           : new AIMessage(msg.content)
@@ -162,19 +246,23 @@ export async function POST(request: NextRequest) {
     ];
 
     // Generate AI response
-    const response = await model.invoke(chatMessages);
+    const response = await trackAsync('gemini.generate', async () =>
+      model.invoke(chatMessages)
+    );
     const aiResponse = response.content.toString();
 
     // Save AI response to database
-    const { data: aiMessage, error: aiError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        content: aiResponse,
-        role: 'assistant',
-      })
-      .select()
-      .single();
+    const { data: aiMessage, error: aiError } = await trackAsync('db.assistant.insert', async () =>
+      supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          content: aiResponse,
+          role: 'assistant',
+        })
+        .select()
+        .single()
+    );
 
     if (aiError) {
       console.error('Error saving AI message:', aiError);
@@ -195,21 +283,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Update conversation updated_at
-    await supabase
-      .from('conversations')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', conversationId);
+    await trackAsync('db.conversation.update', async () =>
+      supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId)
+    );
+
+    // Track uncached response time
+    trackResponseTime(conversationId, startTime, false);
 
     return NextResponse.json({
       message: aiResponse,
       messageId: aiMessage.id,
     });
 
-  } catch (error) {
-    console.error('Chat API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+    } catch (error) {
+      console.error('Chat API error:', error);
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+  });
 }

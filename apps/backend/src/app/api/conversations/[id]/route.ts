@@ -23,19 +23,18 @@ export async function GET(
       );
     }
 
+    // Get limit from query params (default 30 messages)
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '30');
+    const offset = parseInt(url.searchParams.get('offset') || '0');
+
     const { data: conversation, error } = await supabase
       .from('conversations')
       .select(`
         id,
         title,
         created_at,
-        updated_at,
-        messages (
-          id,
-          content,
-          role,
-          created_at
-        )
+        updated_at
       `)
       .eq('id', conversationId)
       .eq('user_id', userId)
@@ -49,14 +48,27 @@ export async function GET(
       );
     }
 
-    // Sort messages by created_at
-    if (conversation.messages) {
-      conversation.messages.sort((a: any, b: any) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
+    // Fetch messages separately with pagination and ordering
+    const { data: messages, error: messagesError, count } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact' })
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (messagesError) {
+      console.error('Error fetching messages:', messagesError);
     }
 
-    return NextResponse.json({ conversation });
+    // Build response with messages
+    const conversationWithMessages = {
+      ...conversation,
+      messages: messages ? messages.reverse() : [],
+      totalMessages: count || 0,
+      hasMore: count ? offset + limit < count : false
+    };
+
+    return NextResponse.json({ conversation: conversationWithMessages });
 
   } catch (error) {
     console.error('Get conversation error:', error);
