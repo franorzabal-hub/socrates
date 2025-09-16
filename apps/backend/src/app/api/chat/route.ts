@@ -10,6 +10,7 @@ import {
   getCrossConversationContext
 } from '@/lib/zep';
 import { checkCommonResponse, trackResponseTime } from '@/lib/commonResponses';
+import { findSmartCachedResponse } from '@/lib/smartCache';
 import { trackAsync } from '@/lib/metrics';
 
 const supabase = createClient(
@@ -48,10 +49,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for cached response first
-    const cachedResponse = await trackAsync('cache.check', async () =>
-      checkCommonResponse(message)
-    );
+    // Check for cached response first - try smart cache, then simple cache
+    const cachedResponse = await trackAsync('cache.check', async () => {
+      const smartResponse = findSmartCachedResponse(message);
+      if (smartResponse) return smartResponse;
+      return checkCommonResponse(message);
+    });
 
     if (cachedResponse) {
       // Track cached response time
