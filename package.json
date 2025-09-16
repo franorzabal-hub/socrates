@@ -7,11 +7,12 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @socrates/backend",
+    "build": "cd apps/backend && npm run build",
     "dev": "npm run dev -w @socrates/backend",
     "dev:backend": "npm run dev -w @socrates/backend",
     "dev:mobile": "npm run start -w @socrates/mobile",
-    "install-all": "npm install --workspaces"
+    "install-all": "npm install --workspaces",
+    "vercel-build": "cd apps/backend && npm run build"
   },
   "devDependencies": {
     "typescript": "^5.5.0"
