@@ -57,55 +57,59 @@ export async function POST(request: NextRequest) {
       // Track cached response time
       trackResponseTime(conversationId, startTime, true);
 
-      // Update title if needed (even for cached responses)
-      try {
-        const { data: conversation } = await supabase
-          .from('conversations')
-          .select('title')
-          .eq('id', conversationId)
-          .single();
-
-        if (conversation?.title === 'Nueva conversación') {
-          const truncatedMessage = message.length > 50
-            ? message.substring(0, 50) + '...'
-            : message;
-
-          await supabase
-            .from('conversations')
-            .update({ title: truncatedMessage })
-            .eq('id', conversationId);
-
-          console.log(`Updated title (cached): ${truncatedMessage}`);
-        }
-      } catch (error) {
-        console.error('Error updating title for cached response:', error);
-      }
-
-      // Save both messages to database
-      await trackAsync('db.message.insert.batch', async () =>
-        Promise.all([
-          supabase
-            .from('messages')
-            .insert({
-              conversation_id: conversationId,
-              content: message,
-              role: 'user',
-            }),
-          supabase
-            .from('messages')
-            .insert({
-              conversation_id: conversationId,
-              content: cachedResponse,
-              role: 'assistant',
-            })
-        ])
-      );
-
-      return NextResponse.json({
+      // Return immediately with cached response
+      const response = NextResponse.json({
         message: cachedResponse,
         cached: true,
         responseTime: Date.now() - startTime
       });
+
+      // Save messages and update title in background (non-blocking)
+      setImmediate(async () => {
+        try {
+          // Check and update title if needed
+          const { data: conversation } = await supabase
+            .from('conversations')
+            .select('title')
+            .eq('id', conversationId)
+            .single();
+
+          if (conversation?.title === 'Nueva conversación') {
+            const truncatedMessage = message.length > 50
+              ? message.substring(0, 50) + '...'
+              : message;
+
+            await supabase
+              .from('conversations')
+              .update({ title: truncatedMessage })
+              .eq('id', conversationId);
+
+            console.log(`Updated title (cached, background): ${truncatedMessage}`);
+          }
+
+          // Save both messages to database
+          await Promise.all([
+            supabase
+              .from('messages')
+              .insert({
+                conversation_id: conversationId,
+                content: message,
+                role: 'user',
+              }),
+            supabase
+              .from('messages')
+              .insert({
+                conversation_id: conversationId,
+                content: cachedResponse,
+                role: 'assistant',
+              })
+          ]);
+        } catch (error) {
+          console.error('Background save error:', error);
+        }
+      });
+
+      return response;
     }
 
     // Initialize variables
