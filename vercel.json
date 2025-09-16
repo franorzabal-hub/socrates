@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm install && cd apps/backend && npm install && npm run build",
+  "buildCommand": "cd apps/backend && npm ci --legacy-peer-deps && npm run build",
   "outputDirectory": "apps/backend/.next",
-  "installCommand": "npm install --legacy-peer-deps"
+  "installCommand": "npm ci --legacy-peer-deps"
 }
