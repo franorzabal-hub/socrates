@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getOrCreateSession } from '@/lib/zep';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -101,6 +102,15 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString()
         }
       });
+    }
+
+    // Initialize Zep session for the new conversation
+    try {
+      await getOrCreateSession(conversationId, userId);
+      console.log(`Zep session created for conversation ${conversationId}`);
+    } catch (zepError) {
+      console.error('Error creating Zep session:', zepError);
+      // Continue without Zep - not critical for conversation creation
     }
 
     return NextResponse.json({ conversation });

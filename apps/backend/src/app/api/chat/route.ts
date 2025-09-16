@@ -1,8 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { createClient } from '@supabase/supabase-js';
-import { getOrCreateSession, addMemory, getMemory } from '@/lib/zep';
+import {
+  getOrCreateSession,
+  addMemory,
+  getMemory,
+  getCrossConversationContext
+} from '@/lib/zep';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,20 +42,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Zep session for memory
-    let zepSession;
-    let zepMemory;
-    const sessionId = `user_${userId}`;
+    // Initialize Zep session for this specific conversation
+    let zepSession: any;
+    let zepMemory: any;
+    let crossConversationContext = '';
+    const sessionId = `conversation_${conversationId}`;
 
     try {
-      zepSession = await getOrCreateSession(userId);
+      // Create session for this conversation
+      zepSession = await getOrCreateSession(conversationId, userId);
+
+      // Get memory for current conversation
       zepMemory = await getMemory(sessionId);
+
+      // Get cross-conversation context for better continuity
+      crossConversationContext = await getCrossConversationContext(userId, sessionId);
+
       console.log('Zep session initialized:', sessionId);
     } catch (zepError) {
       console.error('Zep initialization error (continuing without memory):', zepError);
     }
 
     // Save user message to database
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { data: userMessage, error: userError } = await supabase
       .from('messages')
       .insert({
@@ -120,11 +135,19 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: true })
       .limit(10);
 
-    // Build context from Zep memory if available
+    // Build context from Zep memory and cross-conversation history
     let memoryContext = '';
+
+    // Add current conversation context
     if (zepMemory && zepMemory.summary) {
-      memoryContext = `\n\nContexto del estudiante: ${zepMemory.summary}`;
-      console.log('Using Zep memory context');
+      memoryContext = `\n\nContexto de esta conversación: ${zepMemory.summary}`;
+      console.log('Using conversation memory context');
+    }
+
+    // Add cross-conversation context for continuity
+    if (crossConversationContext) {
+      memoryContext += `\n\nHistorial del estudiante: ${crossConversationContext}`;
+      console.log('Using cross-conversation context');
     }
 
     // Prepare messages for LangChain

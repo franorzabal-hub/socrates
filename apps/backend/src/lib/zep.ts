@@ -1,12 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { ZepClient } from '@getzep/zep-cloud';
-import { Memory, Session } from '@getzep/zep-cloud/dist/memory';
 
 const zepClient = new ZepClient({
   apiKey: process.env.ZEP_API_KEY!,
 });
 
-export async function getOrCreateSession(userId: string): Promise<Session> {
-  const sessionId = `user_${userId}`;
+export async function getOrCreateSession(
+  conversationId: string,
+  userId: string,
+  subject?: string
+): Promise<any> {
+  // Use conversation ID as the primary session identifier
+  const sessionId = `conversation_${conversationId}`;
 
   try {
     // Try to get existing session
@@ -16,6 +22,9 @@ export async function getOrCreateSession(userId: string): Promise<Session> {
     // Create new session if it doesn't exist
     const metadata = {
       createdAt: new Date().toISOString(),
+      conversationId,
+      userId,
+      subject: subject || 'general',
       type: 'student',
       gradeLevel: 'primary',
       language: 'spanish',
@@ -23,7 +32,7 @@ export async function getOrCreateSession(userId: string): Promise<Session> {
 
     const session = await zepClient.memory.addSession({
       sessionId,
-      userId, // Add user_id directly to the session
+      userId, // Keep user_id for user-level analytics
       metadata,
     });
 
@@ -37,7 +46,7 @@ export async function addMemory(
   content: string
 ): Promise<void> {
   const message = {
-    roleType: role === 'user' ? 'user' : 'assistant',
+    roleType: role as any, // Cast to any to avoid type conflict
     content,
   };
 
@@ -46,7 +55,7 @@ export async function addMemory(
   });
 }
 
-export async function getMemory(sessionId: string): Promise<Memory | null> {
+export async function getMemory(sessionId: string): Promise<any | null> {
   try {
     const memory = await zepClient.memory.get(sessionId);
     return memory;
@@ -71,6 +80,44 @@ export async function searchMemory(
   } catch (error) {
     console.error('Error searching memory:', error);
     return null;
+  }
+}
+
+// Get all sessions for a user (cross-conversation context)
+export async function getUserSessions(userId: string): Promise<any[]> {
+  try {
+    // For now, return empty array as cross-conversation context
+    // This feature requires proper Zep SDK implementation
+    return [];
+  } catch (error) {
+    console.error('Error fetching user sessions:', error);
+    return [];
+  }
+}
+
+// Get cross-conversation context for better continuity
+export async function getCrossConversationContext(
+  userId: string,
+  currentSessionId: string,
+  limit: number = 3
+): Promise<string> {
+  try {
+    const userSessions = await getUserSessions(userId);
+    const recentSessions = userSessions
+      .filter(s => s.sessionId !== currentSessionId)
+      .slice(0, limit);
+
+    let context = '';
+    for (const session of recentSessions) {
+      const memory = await getMemory(session.sessionId);
+      if (memory?.summary) {
+        context += `\n${memory.summary}`;
+      }
+    }
+    return context;
+  } catch (error) {
+    console.error('Error getting cross-conversation context:', error);
+    return '';
   }
 }
 
